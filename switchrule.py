@@ -2,19 +2,18 @@ from configloader import get_config
 
 
 def getKeys():
-    key_list = ["id", "port", "u", "d", "transfer_enable", "passwd", "enable"]
+    key_list = ["method", "port", "u", "d", "transfer_enable", "passwd", "enable"]
     if get_config().API_INTERFACE == "sspanelv3":
-        key_list += ["method"]
+        key_list += ["id"]
     elif get_config().API_INTERFACE == "sspanelv3ssr":
-        key_list += ["method", "obfs", "protocol"]
+        key_list += ["id", "obfs", "protocol"]
     elif get_config().API_INTERFACE == "glzjinmod":
         key_list += [
-            "method",
+            "accountId id"
             "obfs",
             "obfs_param",
             "protocol",
             "protocol_param",
-            "id",
             "node_speedlimit",
             "forbidden_ip",
             "forbidden_port",

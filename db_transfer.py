@@ -56,6 +56,8 @@ class DbTransfer(object):
         query_sub_when2 = ''
         query_sub_in = None
 
+        save_flow = 'INSERT INTO `saveFlow`(`id`, `accountId`, `port`, `flow`, `time`) VALUES (0,0,0,0,0) '
+
         alive_user_count = 0
         bandwidth_thistime = 0
 
@@ -90,27 +92,29 @@ class DbTransfer(object):
                 id, dt_transfer[id][0] * self.traffic_rate)
             query_sub_when2 += ' WHEN %s THEN d+%s' % (
                 id, dt_transfer[id][1] * self.traffic_rate)
+            save_flow += ',(%s,%s,%s,%s,unix_timestamp()*1000)' % (str(get_config().NODE_ID),
+                                                                   str(self.port_uid_table[id]), id, dt_transfer[id][0]+dt_transfer[id][1],)
             update_transfer[id] = dt_transfer[id]
 
             alive_user_count = alive_user_count + 1
 
-            cur = conn.cursor()
-            cur.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '" +
-                        str(self.port_uid_table[id]) +
-                        "', '" +
-                        str(dt_transfer[id][0]) +
-                        "', '" +
-                        str(dt_transfer[id][1]) +
-                        "', '" +
-                        str(get_config().NODE_ID) +
-                        "', '" +
-                        str(self.traffic_rate) +
-                        "', '" +
-                        self.trafficShow((dt_transfer[id][0] +
-                                          dt_transfer[id][1]) *
-                                         self.traffic_rate) +
-                        "', unix_timestamp()); ")
-            cur.close()
+            # cur = conn.cursor()
+            # cur.execute("INSERT INTO `user_traffic_log` (`id`, `user_id`, `u`, `d`, `Node_ID`, `rate`, `traffic`, `log_time`) VALUES (NULL, '" +
+            #             str(self.port_uid_table[id]) +
+            #             "', '" +
+            #             str(dt_transfer[id][0]) +
+            #             "', '" +
+            #             str(dt_transfer[id][1]) +
+            #             "', '" +
+            #             str(get_config().NODE_ID) +
+            #             "', '" +
+            #             str(self.traffic_rate) +
+            #             "', '" +
+            #             self.trafficShow((dt_transfer[id][0] +
+            #                               dt_transfer[id][1]) *
+            #                              self.traffic_rate) +
+            #             "', unix_timestamp()); ")
+            # cur.close()
 
             bandwidth_thistime = bandwidth_thistime + \
                 (dt_transfer[id][0] + dt_transfer[id][1])
@@ -126,12 +130,22 @@ class DbTransfer(object):
                 ' WHERE port IN (%s)' % query_sub_in
 
             cur = conn.cursor()
-            cur.execute(query_sql)
+            cur.execute(save_flow)
             cur.close()
 
+        # 减流量
+        # cur = conn.cursor()
+        # cur.execute(
+        #     "UPDATE `ss_node` SET `node_heartbeat`=unix_timestamp(),`node_bandwidth`=`node_bandwidth`+'" +
+        #     str(bandwidth_thistime) +
+        #     "' WHERE `id` = " +
+        #     str(
+        #         get_config().NODE_ID) +
+        #     " ; ")
+        # cur.close()
         cur = conn.cursor()
         cur.execute(
-            "UPDATE `ss_node` SET `node_heartbeat`=unix_timestamp(),`node_bandwidth`=`node_bandwidth`+'" +
+            "UPDATE `server` SET `node_heartbeat`=unix_timestamp(),`node_bandwidth`=`node_bandwidth`+'" +
             str(bandwidth_thistime) +
             "' WHERE `id` = " +
             str(
@@ -139,16 +153,18 @@ class DbTransfer(object):
             " ; ")
         cur.close()
 
+        # 记录在线数
         cur = conn.cursor()
         cur.execute("INSERT INTO `ss_node_online_log` (`id`, `node_id`, `online_user`, `log_time`) VALUES (NULL, '" +
                     str(get_config().NODE_ID) + "', '" + str(alive_user_count) + "', unix_timestamp()); ")
         cur.close()
 
-        cur = conn.cursor()
-        cur.execute("INSERT INTO `ss_node_info` (`id`, `node_id`, `uptime`, `load`, `log_time`) VALUES (NULL, '" +
-                    str(get_config().NODE_ID) + "', '" + str(self.uptime()) + "', '" + str(self.load()) + "', unix_timestamp()); ")
-        cur.close()
+        # cur = conn.cursor()
+        # cur.execute("INSERT INTO `ss_node_info` (`id`, `node_id`, `uptime`, `load`, `log_time`) VALUES (NULL, '" +
+        #             str(get_config().NODE_ID) + "', '" + str(self.uptime()) + "', '" + str(self.load()) + "', unix_timestamp()); ")
+        # cur.close()
 
+        # 记录在在线ip
         online_iplist = ServerPool.get_instance().get_servers_iplist()
         for id in online_iplist.keys():
             for ip in online_iplist[id]:
@@ -165,6 +181,7 @@ class DbTransfer(object):
                     self.port_uid_table[port]) + "', '" + str(rule_id) + "', UNIX_TIMESTAMP(), '" + str(get_config().NODE_ID) + "')")
                 cur.close()
 
+        # 黑名单
         deny_str = ""
         if platform.system() == 'Linux' and get_config().ANTISSATTACK == 1:
             wrong_iplist = ServerPool.get_instance().get_servers_wrong()
@@ -297,7 +314,7 @@ class DbTransfer(object):
             keys = switchrule.getKeys()
         except Exception as e:
             keys = [
-                'id',
+                'accountId id',
                 'port',
                 'u',
                 'd',
@@ -337,10 +354,14 @@ class DbTransfer(object):
                 charset='utf8')
         conn.autocommit(True)
 
+        # b 读取节点信息
         cur = conn.cursor()
 
-        cur.execute("SELECT `node_group`,`node_class`,`node_speedlimit`,`traffic_rate`,`mu_only`,`sort` FROM ss_node where `id`='" +
-                    str(get_config().NODE_ID) + "' AND (`node_bandwidth`<`node_bandwidth_limit` OR `node_bandwidth_limit`=0)")
+        cur.execute("SELECT `node_speedlimit`,`singleMode` FROM server where `id`=" +
+                    str(get_config().NODE_ID)+" AND (`node_bandwidth`<`node_bandwidth_limit` OR `node_bandwidth_limit`=0)")
+        # b 原代码
+        # cur.execute("SELECT `node_group`,`node_class`,`node_speedlimit`,`traffic_rate`,`mu_only`,`sort` FROM ss_node where `id`='" +
+        #             str(get_config().NODE_ID) + "' AND (`node_bandwidth`<`node_bandwidth_limit` OR `node_bandwidth_limit`=0)")
         nodeinfo = cur.fetchone()
 
         if nodeinfo is None:
@@ -351,35 +372,51 @@ class DbTransfer(object):
             return rows
 
         cur.close()
+        # b 节点限速
+        self.node_speedlimit = float(nodeinfo[0])
 
-        self.node_speedlimit = float(nodeinfo[2])
-        self.traffic_rate = float(nodeinfo[3])
-
-        self.mu_only = int(nodeinfo[4])
-
-        if nodeinfo[5] == 10:
-            self.is_relay = True
+        # b mu_only -1/只启用普通端口 0/单端口多用户与普通端口并存 1/只启用单端口多用户
+        if nodeinfo[1] == "ssr1port":
+            self.mu_only = 1
         else:
-            self.is_relay = False
+            self.mu_only = 0
 
-        if nodeinfo[0] == 0:
-            node_group_sql = ""
-        else:
-            node_group_sql = "AND `node_group`=" + str(nodeinfo[0])
+        # self.node_speedlimit = float(nodeinfo[2])
+        self.traffic_rate = 1
+
+        # self.mu_only = int(nodeinfo[4])
+
+        # if nodeinfo[5] == 10:
+        #     self.is_relay = True
+        # else:
+        #     self.is_relay = False
+        self.is_relay = False
+
+        # if nodeinfo[0] == 0:
+        #     node_group_sql = ""
+        # else:
+        #     node_group_sql = "AND `node_group`=" + str(nodeinfo[0])
 
         cur = conn.cursor()
-        cur.execute("SELECT " +
-                    ','.join(keys) +
-                    " FROM user WHERE ((`class`>=" +
-                    str(nodeinfo[1]) +
-                    " " +
-                    node_group_sql +
-                    ") OR `is_admin`=1) AND`enable`=1 AND `expire_in`>now() AND `transfer_enable`>`u`+`d`")
+
+        cur.execute("SELECT " + ','.join(keys) +
+                    " FROM ssr_user where enable = 1 and serverId=" + str(get_config().NODE_ID))
+        # b 下面是原代码
+        # cur.execute("SELECT " +
+        #             ','.join(keys) +
+        #             " FROM user WHERE ((`class`>=" +
+        #             str(nodeinfo[1]) +
+        #             " " +
+        #             node_group_sql +
+        #             ") OR `is_admin`=1) AND`enable`=1 AND `expire_in`>now() AND `transfer_enable`>`u`+`d`")
         rows = []
         for r in cur.fetchall():
             d = {}
             for column in range(len(keys)):
-                d[keys[column]] = r[column]
+                key_temp = keys[column].split(' ')
+                d[key_temp[len(key_temp)-1]] = r[column]
+            # for column in range(len(keys)):
+            #     d[keys[column]] = r[column]
             rows.append(d)
         cur.close()
 
@@ -387,13 +424,14 @@ class DbTransfer(object):
         # SELECT * FROM `ss_node`  where `node_ip` != ''
         self.node_ip_list = []
         cur = conn.cursor()
-        cur.execute("SELECT `node_ip` FROM `ss_node`  where `node_ip` != ''")
+        # cur.execute("SELECT `node_ip` FROM `ss_node`  where `node_ip` != ''")
+        cur.execute("SELECT `host` FROM `server`  where `type` = 'Shadowsocks'")
         for r in cur.fetchall():
-            temp_list = str(r[0]).split(',')
+            temp_list = str(r[0]).split(':')
             self.node_ip_list.append(temp_list[0])
         cur.close()
 
-        # 读取审计规则,数据包匹配部分
+        # 读取审计规则,数据包匹配部分  type 1/数据包明文匹配 2/数据包 hex 匹配
         keys_detect = ['id', 'regex']
 
         cur = conn.cursor()
@@ -468,27 +506,27 @@ class DbTransfer(object):
 
         # 读取中转规则，如果是中转节点的话
 
-        if self.is_relay:
-            self.relay_rule_list = {}
+        # if self.is_relay:
+        #     self.relay_rule_list = {}
 
-            keys_detect = ['id', 'user_id', 'dist_ip', 'port', 'priority']
+        #     keys_detect = ['id', 'user_id', 'dist_ip', 'port', 'priority']
 
-            cur = conn.cursor()
-            cur.execute("SELECT " +
-                        ','.join(keys_detect) +
-                        " FROM relay where `source_node_id` = 0 or `source_node_id` = " +
-                        str(get_config().NODE_ID))
+        #     cur = conn.cursor()
+        #     cur.execute("SELECT " +
+        #                 ','.join(keys_detect) +
+        #                 " FROM relay where `source_node_id` = 0 or `source_node_id` = " +
+        #                 str(get_config().NODE_ID))
 
-            for r in cur.fetchall():
-                d = {}
-                d['id'] = int(r[0])
-                d['user_id'] = int(r[1])
-                d['dist_ip'] = str(r[2])
-                d['port'] = int(r[3])
-                d['priority'] = int(r[4])
-                self.relay_rule_list[d['id']] = d
+        #     for r in cur.fetchall():
+        #         d = {}
+        #         d['id'] = int(r[0])
+        #         d['user_id'] = int(r[1])
+        #         d['dist_ip'] = str(r[2])
+        #         d['port'] = int(r[3])
+        #         d['priority'] = int(r[4])
+        #         self.relay_rule_list[d['id']] = d
 
-            cur.close()
+        #     cur.close()
 
         conn.close()
         return rows
@@ -538,7 +576,7 @@ class DbTransfer(object):
         for row in rows:
             self.port_uid_table[row['port']] = row['id']
             self.uid_port_table[row['id']] = row['port']
-
+        # b 只起用单端口多用户
         if self.mu_only == 1:
             i = 0
             while i < len(rows):
@@ -622,6 +660,8 @@ class DbTransfer(object):
 
             cfg['detect_hex_list'] = self.detect_hex_list.copy()
             cfg['detect_text_list'] = self.detect_text_list.copy()
+
+            # b is_relay 中转
 
             if self.is_relay and row['is_multi_user'] != 2:
                 temp_relay_rules = {}

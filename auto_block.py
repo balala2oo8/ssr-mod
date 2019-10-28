@@ -75,11 +75,13 @@ class AutoBlock(object):
             # SELECT * FROM `ss_node`  where `node_ip` != ''
             node_ip_list = []
             cur = conn.cursor()
-            cur.execute(
-                "SELECT `node_ip` FROM `ss_node`  where `node_ip` != ''"
-            )
+             # b 原代码
+            # cur.execute(
+            #     "SELECT `node_ip` FROM `ss_node`  where `node_ip` != ''"
+            # )
+            cur.execute("SELECT `host` FROM `server`  where `type` = 'Shadowsocks'")
             for r in cur.fetchall():
-                temp_list = str(r[0]).split(",")
+                temp_list = str(r[0]).split(":")
                 node_ip_list.append(temp_list[0])
             cur.close()
 

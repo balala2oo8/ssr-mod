@@ -9,7 +9,7 @@ def getKeys():
         key_list += ["id", "obfs", "protocol"]
     elif get_config().API_INTERFACE == "glzjinmod":
         key_list += [
-            "accountId id"
+            "accountId id",
             "obfs",
             "obfs_param",
             "protocol",
